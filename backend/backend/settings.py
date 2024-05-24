@@ -142,7 +142,7 @@ STATIC_URL = '/static/'
 # Directory where static files will be collected
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Additional locations of static files
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
+# # Additional locations of static files
+# STATICFILES_DIRS = [
+#     BASE_DIR / 'static',
+# ]
