@@ -1,12 +1,12 @@
-# backend/api/views.py
-
 import io
 import os
 from django.shortcuts import render
 from rest_framework import viewsets
 from rest_framework.response import Response
-from .models import File
-from .serializers import FileSerializer
+from rest_framework.decorators import api_view
+from django.db.models import Q
+from .models import File, UserProfile
+from .serializers import FileSerializer, UserProfileSerializer
 from django.http import JsonResponse
 from googleapiclient.http import MediaIoBaseUpload
 from googleapiclient.discovery import build
@@ -31,8 +31,30 @@ def suggest_file_name(file_content):
     response = openai.Completion.create(
         engine="gpt-4-turbo",
         prompt=f"Suggest a name for this file content: {file_content}",
-        max_tokens=100  )
+        max_tokens=100
+    )
     return response.choices[0].text.strip()
+
+# AI-based file categorization suggestion function
+def suggest_file_category(file_content):
+    openai.api_key = os.getenv('OPENAI_API_KEY')
+    response = openai.Completion.create(
+        engine="gpt-4-turbo",
+        prompt=f"Categorize this file content: {file_content}",
+        max_tokens=50
+    )
+    return response.choices[0].text.strip()
+
+# AI-based file tagging suggestion function
+def suggest_file_tags(file_content):
+    openai.api_key = os.getenv('OPENAI_API_KEY')
+    response = openai.Completion.create(
+        engine="gpt-4-turbo",
+        prompt=f"Suggest tags for this file content: {file_content}",
+        max_tokens=50
+    )
+    tags = response.choices[0].text.strip().split(',')
+    return [tag.strip() for tag in tags]
 
 class FileViewSet(viewsets.ModelViewSet):
     queryset = File.objects.all()
@@ -45,13 +67,40 @@ class FileViewSet(viewsets.ModelViewSet):
         # Get AI suggestion for file name
         suggested_name = suggest_file_name(file_content.decode('utf-8'))
         
+        # Get AI suggestion for file category and tags
+        suggested_category = suggest_file_category(file_content.decode('utf-8'))
+        suggested_tags = suggest_file_tags(file_content.decode('utf-8'))
+        
         # Upload file to Google Drive
         file_id = upload_file_to_drive(file_content, suggested_name)
-
+        
         # Save file info to database
-        file_instance = File.objects.create(name=suggested_name, category='', file_id=file_id)
+        file_instance = File.objects.create(
+            name=suggested_name, 
+            category=suggested_category, 
+            tags=suggested_tags,
+            file_id=file_id
+        )
         serializer = self.get_serializer(file_instance)
         return Response(serializer.data)
+
+class UserProfileViewSet(viewsets.ModelViewSet):
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
+
+@api_view(['GET'])
+def search_files(request):
+    query = request.query_params.get('q', '')
+    if query:
+        files = File.objects.filter(
+            Q(name__icontains=query) | 
+            Q(category__icontains=query) | 
+            Q(tags__icontains=query)
+        )
+    else:
+        files = File.objects.all()
+    serializer = FileSerializer(files, many=True)
+    return Response(serializer.data)
 
 def test_view(request):
     return JsonResponse({"message": "Hello, world!"})
